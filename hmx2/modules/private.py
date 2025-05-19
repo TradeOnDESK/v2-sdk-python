@@ -620,8 +620,8 @@ class Private(object):
 
   def __cancel_intent_trade_order(self, account: str, market_index: int, order_index: int):
     created_timestamp = math.floor(time())
-    json_body = self.__encode_and_build_cancel_trade_order(
-      market_index, order_index, created_timestamp)
+    json_body = self.__encode_and_build_cancel_trade_order(account,
+                                                           market_index, order_index, created_timestamp)
     return self.__cancel_intent_trade_order_api(json_body).json()
 
   def __get_order_key_from_order_index(self, account: str, order_index: int):
