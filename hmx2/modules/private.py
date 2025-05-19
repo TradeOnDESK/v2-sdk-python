@@ -54,10 +54,11 @@ decimal.getcontext().rounding = "ROUND_HALF_DOWN"
 class Private(object):
 
   def __init__(self, chain_id: int, eth_provider: Web3,
-               eth_signer: Account, oracle_middleware: OracleMiddleware):
+               eth_signer: Account, main_account: str, oracle_middleware: OracleMiddleware):
     self.chain_id = chain_id
     self.eth_provider = eth_provider
     self.eth_signer = eth_signer
+    self.main_account = main_account
     self.oracle_middleware = oracle_middleware
     self.eth_provider.middleware_onion.add(
       construct_sign_and_send_raw_middleware(self.eth_signer))
@@ -96,6 +97,12 @@ class Private(object):
     :param amount: required
     :type amount: float
     '''
+
+    # if signer_address is not self.main_account, throw error
+    if self.eth_signer.address != self.main_account:
+      raise Exception(
+          "Should use main account private key to manage collateral")
+
     if token_address not in self.collateral_address_list:
       raise Exception("Invalid collateral address")
     check_sub_account_id_param(sub_account_id)
@@ -133,6 +140,10 @@ class Private(object):
     :param amount: required
     :type amount: float
     '''
+    # if signer_address is not self.main_account, throw error
+    if self.eth_signer.address != self.main_account:
+      raise Exception(
+        "Should use main account private key to manage collateral")
     if token_address not in self.collateral_address_list:
       raise Exception("Invalid collateral address")
     check_sub_account_id_param(sub_account_id)
@@ -162,6 +173,11 @@ class Private(object):
     :param amount: required
     :type amount: float
     '''
+    # if signer_address is not self.main_account, throw error
+    if self.eth_signer.address != self.main_account:
+      raise Exception(
+        "Should use main account private key to manage collateral")
+
     check_sub_account_id_param(sub_account_id)
 
     amount_wei = int(amount * 10 ** 18)
@@ -198,7 +214,7 @@ class Private(object):
     :type tp_token: str in list COLLATERALS address
     '''
     if intent:
-      return self.__create_intent_trade_order(sub_account_id, market_index, buy, size, reduce_only, tp_token)
+      return self.__create_intent_trade_order(self.main_account, sub_account_id, market_index, buy, size, reduce_only, tp_token)
 
     check_sub_account_id_param(sub_account_id)
 
@@ -215,7 +231,7 @@ class Private(object):
     }
 
     tx = self.__create_order_batch(
-      self.eth_signer.address, sub_account_id, [order]
+      self.main_account, sub_account_id, [order]
     )
 
     # wait for transaction to be complete
@@ -257,7 +273,7 @@ class Private(object):
     '''
 
     if intent:
-      return self.__create_intent_trigger_order(sub_account_id, market_index, buy, size, trigger_price, trigger_above_threshold, reduce_only, expire_time, tp_token)
+      return self.__create_intent_trigger_order(self.main_account, sub_account_id, market_index, buy, size, trigger_price, trigger_above_threshold, reduce_only, expire_time, tp_token)
 
     order = {
       "cmd": Cmd.CREATE,
@@ -276,7 +292,7 @@ class Private(object):
     }
 
     tx = self.__create_order_batch(
-      self.eth_signer.address, sub_account_id, [order]
+      self.main_account, sub_account_id, [order]
     )
 
     self.eth_provider.eth.wait_for_transaction_receipt(tx)
@@ -330,7 +346,7 @@ class Private(object):
     }
 
     tx = self.__create_order_batch(
-      self.eth_signer.address, sub_account_id, [order]
+      self.main_account, sub_account_id, [order]
     )
 
     self.eth_provider.eth.wait_for_transaction_receipt(tx)
@@ -353,14 +369,14 @@ class Private(object):
     '''
 
     if intent:
-      return self.__cancel_intent_trade_order(market_index, order_index)
+      return self.__cancel_intent_trade_order(self.main_account, market_index, order_index)
     order = {
       "cmd": Cmd.CANCEL,
       "order_index": order_index,
     }
 
     tx = self.__create_order_batch(
-      self.eth_signer.address, sub_account_id, [order]
+      self.main_account, sub_account_id, [order]
     )
 
     self.eth_provider.eth.wait_for_transaction_receipt(tx)
@@ -441,7 +457,7 @@ class Private(object):
     return self.limit_trade_handler_instance.events[topic](
       ).process_receipt(receipt, DISCARD)
 
-  def __create_intent_trigger_order(self, sub_account_id: int, market_index: int, buy: bool, size: float, trigger_price: float, trigger_above_threshold: bool, reduce_only: bool, expire_time: int, tp_token: str = ADDRESS_ZERO):
+  def __create_intent_trigger_order(self, account: str, sub_account_id: int, market_index: int, buy: bool, size: float, trigger_price: float, trigger_above_threshold: bool, reduce_only: bool, expire_time: int, tp_token: str = ADDRESS_ZERO):
     created_timestamp = math.floor(time())
     expired_timestamp = created_timestamp + expire_time
 
@@ -455,11 +471,11 @@ class Private(object):
     size = from_number_to_e30(size)
 
     json_body = json_body = self.__encode_and_build_trade_order(
-      market_index, size, buy, trigger_price, acceptable_price, trigger_above_threshold, reduce_only, tp_token, created_timestamp, expired_timestamp, sub_account_id)
+      market_index, size, buy, trigger_price, acceptable_price, trigger_above_threshold, reduce_only, tp_token, created_timestamp, expired_timestamp, account, sub_account_id)
 
     return self.__upsert_intent_trade_orders_api(json_body)
 
-  def __create_intent_trade_order(self, sub_account_id: int, market_index: int, buy: bool, size: float, reduce_only: bool, tp_token: str = ADDRESS_ZERO):
+  def __create_intent_trade_order(self, account: str, sub_account_id: int, market_index: int, buy: bool, size: float, reduce_only: bool, tp_token: str = ADDRESS_ZERO):
     created_timestamp = math.floor(time())
     expired_timestamp = created_timestamp + 5 * MINUTES
 
@@ -470,14 +486,14 @@ class Private(object):
     size = from_number_to_e30(size)
 
     json_body = self.__encode_and_build_trade_order(
-      market_index, size, buy, trigger_price, acceptable_price, True, reduce_only, tp_token, created_timestamp, expired_timestamp, sub_account_id)
+      market_index, size, buy, trigger_price, acceptable_price, True, reduce_only, tp_token, created_timestamp, expired_timestamp, account, sub_account_id)
 
     return self.__upsert_intent_trade_orders_api(json_body)
 
   def __upsert_intent_trade_orders_api(self, req):
     return r.post(f'{INTENT_TRADE_API}/v1/intent-handler/orders.upsert', headers={'Content-Type': 'application/json'}, data=req)
 
-  def __encode_and_build_trade_order(self, market_index: int, size: int, buy: bool, trigger_price: int, acceptable_price: int, trigger_above_threshold: bool, reduce_only: bool, tp_token: str, created_timestamp: int, expired_timestamp: int, sub_account_id: int):
+  def __encode_and_build_trade_order(self, market_index: int, size: int, buy: bool, trigger_price: int, acceptable_price: int, trigger_above_threshold: bool, reduce_only: bool, tp_token: str, created_timestamp: int, expired_timestamp: int, account: str, sub_account_id: int):
     full_message = {
       "domain": {
         "name": "IntentHander",
@@ -511,7 +527,7 @@ class Private(object):
         "tpToken": tp_token,
         "createdTimestamp": created_timestamp,
         "expiryTimestamp": expired_timestamp,
-        "account": self.eth_signer.address,
+        "account": account,
         "subAccountId": sub_account_id
       }
     }
@@ -545,7 +561,7 @@ class Private(object):
           "tpToken": tp_token,
           "createdTimestamp": created_timestamp,
           "expiryTimestamp": expired_timestamp,
-          "account": self.eth_signer.address,
+          "account": account,
           "subAccountId": sub_account_id,
           "signature": "0x" + signature.hex(),
           "digest": sign_data.messageHash.hex(),
@@ -563,8 +579,8 @@ class Private(object):
     '''
     return self.eth_signer.address
 
-  def __encode_and_build_cancel_trade_order(self, market_index: int, order_index: int, created_timestamp: int):
-    order_key = self.__get_order_key_from_order_index(order_index)
+  def __encode_and_build_cancel_trade_order(self, account: str, market_index: int, order_index: int, created_timestamp: int):
+    order_key = self.__get_order_key_from_order_index(account, order_index)
     raw_message = f'Cancel_{order_key}_{created_timestamp}'
 
     encoded_message = encode_defunct(text=raw_message)
@@ -602,15 +618,15 @@ class Private(object):
   def __cancel_intent_trade_order_api(self, req):
     return r.post(f'{INTENT_TRADE_API}/v1/intent-handler/orders.cancel', headers={'Content-Type': 'application/json'}, data=req)
 
-  def __cancel_intent_trade_order(self, market_index: int, order_index: int):
+  def __cancel_intent_trade_order(self, account: str, market_index: int, order_index: int):
     created_timestamp = math.floor(time())
     json_body = self.__encode_and_build_cancel_trade_order(
       market_index, order_index, created_timestamp)
     return self.__cancel_intent_trade_order_api(json_body).json()
 
-  def __get_order_key_from_order_index(self, order_index: int):
+  def __get_order_key_from_order_index(self, account: str, order_index: int):
     order_response = self.__get_intent_trade_orders(
-      self.eth_signer.address, [0, 1, 2, 3, 4])
+      account, [0, 1, 2, 3, 4])
 
     order_object = {}
 

@@ -18,7 +18,7 @@ from hmx2.modules.oracle.oracle_middleware import OracleMiddleware
 
 
 class Client(object):
-  def __init__(self, rpc_url, eth_private_key=None, pyth_price_service_url=DEFAULT_PYTH_PRICE_SERVICE_URL):
+  def __init__(self, rpc_url, eth_private_key=None, main_account=None, pyth_price_service_url=DEFAULT_PYTH_PRICE_SERVICE_URL):
     self.__eth_provider = Web3(Web3.HTTPProvider(
       rpc_url, request_kwargs={'timeout': 60}))
     self.__chain_id = self.__eth_provider.eth.chain_id
@@ -44,6 +44,8 @@ class Client(object):
     self.__oracle_middleware = OracleMiddleware(
       pyth_oracle, glp_oracle, dix_oracle, gm_btc_oracle, gm_eth_oracle, onchain_pricelens_oracle, calc_pricelens_oracle)
 
+    self.__main_account = main_account if main_account else self.__eth_signer.address
+
     self.__private = None
     self.__public = Public(
       self.__chain_id, self.__eth_provider, self.__oracle_middleware)
@@ -65,7 +67,7 @@ class Client(object):
     if not self.__private:
       if self.__eth_signer:
         self.__private = Private(
-          self.__chain_id, self.__eth_provider, self.__eth_signer, self.__oracle_middleware)
+          self.__chain_id, self.__eth_provider, self.__eth_signer, self.__main_account, self.__oracle_middleware)
       else:
         raise Exception("Private module requires eth_private_key")
     return self.__private
