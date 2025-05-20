@@ -24,6 +24,8 @@ class Client(object):
     self.__chain_id = self.__eth_provider.eth.chain_id
     if eth_private_key is not None:
       self.__eth_signer = Account.from_key(eth_private_key)
+    else:
+      self.__eth_signer = None
 
     contract_address = get_contract_address(self.__chain_id)
 
@@ -44,7 +46,10 @@ class Client(object):
     self.__oracle_middleware = OracleMiddleware(
       pyth_oracle, glp_oracle, dix_oracle, gm_btc_oracle, gm_eth_oracle, onchain_pricelens_oracle, calc_pricelens_oracle)
 
-    self.__main_account = main_account if main_account else self.__eth_signer.address
+    if main_account is not None:
+      self.__main_account = main_account
+    else:
+      self.__main_account = self.__eth_signer.address if self.__eth_signer else None
 
     self.__private = None
     self.__public = Public(
